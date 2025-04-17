@@ -4,6 +4,33 @@
 
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&display=swap');
 
+:root {
+  --color-bg: #0a0a0a;
+  --color-faded: #e5e5e5;
+  --color-highlight: #00ff99;
+}
+
 body {
   @apply bg-bg text-faded font-mono;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* Optional: Links */
+a {
+  color: var(--color-highlight);
+  text-decoration: underline;
+}
+
+a:hover {
+  opacity: 0.8;
+}
+
+/* Optional: Custom scrollbar (if desired) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--color-highlight);
+  border-radius: 4px;
 }
