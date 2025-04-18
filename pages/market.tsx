@@ -75,7 +75,7 @@ export default function MarketPage() {
     const entries = Object.entries(latestData.categoryRVIs);
     const sorted = entries.sort(([a], [b]) => a.localeCompare(b));
     const final = activeCategory ? [...sorted, ["Total RVI", latestData.totalRVI]] : sorted;
-    return final.map(([category, rawScore]) => {
+    return final.map(([category, rawScore]: [string, number]) => {
       const score = typeof rawScore === "number" ? rawScore : parseFloat(rawScore);
       return (
         <button
