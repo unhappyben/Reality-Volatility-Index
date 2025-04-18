@@ -37,20 +37,19 @@ const signals = [
 
 export default function FivePillars() {
   return (
-    <section className="bg-bg text-faded px-4 py-5">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 w-full max-w-7xl mx-auto">
+    <section className="bg-bg text-faded px-4 pt-8 pb-24">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 justify-items-center">
         {signals.map((signal, i) => (
           <motion.div
             key={signal.title}
-            className="w-full"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: i * 0.05, duration: 0.4 }}
           >
             <Tooltip content={signal.tooltip}>
-            <div className="w-full h-[120px] flex flex-col items-center justify-center text-center border border-highlight bg-gray-950 rounded-xl p-4 hover:shadow-[0_0_10px_#00ff99] transition-all cursor-help">
-            <h3 className="text-neon text-sm font-bold mb-2">
+              <div className="w-[320px] h-[120px] border border-highlight bg-gray-950 rounded-xl p-4 hover:shadow-[0_0_10px_#00ff99] transition-all cursor-help flex flex-col items-center justify-center text-center">
+                <h3 className="text-neon text-sm font-bold mb-2">
                   {signal.title}
                 </h3>
                 <p className="text-xs text-gray-400 font-mono">
