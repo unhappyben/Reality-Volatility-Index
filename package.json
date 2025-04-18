@@ -6,15 +6,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "fetch:rvi": "node scripts/fetch_and_transform_rvi.js"
   },
   "dependencies": {
     "@vercel/analytics": "^1.5.0",
+    "dotenv": "^16.5.0",
     "framer-motion": "^12.7.4",
     "lucide-react": "^0.488.0",
     "next": "latest",
+    "node-fetch": "^3.3.2",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "recharts": "^2.15.3"
   },
   "devDependencies": {
     "@types/node": "22.14.1",
