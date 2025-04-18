@@ -23,6 +23,11 @@ export default function MarketPage() {
   const [latestData, setLatestData] = useState<{ totalRVI: number; categoryRVIs: Record<string, number> } | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [timeRange, setTimeRange] = useState<number>(12);
+  const handleLeverageChange = (value: number) => {
+    setLeverage(value);
+    setCustomLeverage(value.toFixed(1));
+  };
+  
 
   useEffect(() => {
     const loadData = async () => {
