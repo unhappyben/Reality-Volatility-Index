@@ -100,7 +100,7 @@ export default function MarketPage() {
           )}
         </div>
 
-        <div className="border border-highlight bg-gray-950 rounded-2xl p-6 flex items-center justify-center min-h-[400px] col-span-12 xl:col-span-7">
+        <div className="border border-highlight bg-gray-950 rounded-2xl p-6 flex items-center justify-center min-h-[400px] col-span-12 xl:col-span-6.5">
           <div className="text-center">
             <p className="text-sm font-mono">
               [ {primaryTitle} RVI Chart Placeholder ]
