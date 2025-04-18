@@ -59,11 +59,9 @@ export default function MarketPage() {
 
   const primaryDelta = activeCategory ? null : dummyData.delta;
   const primaryTitle = activeCategory ?? "Reality Volatility Index";
-  const contractAmount = collateral && leverage
-    ? (collateral * leverage) / primaryScore
-    : 0;
-  const notionalValue = (contractAmount * primaryScore).toFixed(2);
-  const estimatedPositionSize = notionalValue;
+  const contractAmount = collateral ? (collateral * leverage) / primaryScore : 0;
+  const estimatedPositionSize = (contractAmount * primaryScore).toFixed(2);
+  const notionalValue = estimatedPositionSize;
   const tpPrice = takeProfit ? (primaryScore * (1 + takeProfit / 100)).toFixed(2) : null;
   const slPrice = stopLoss ? (primaryScore * (1 - stopLoss / 100)).toFixed(2) : null;
   const liquidationPrice = !stopLoss
@@ -71,7 +69,6 @@ export default function MarketPage() {
     : null;
 
   const handleLeverageChange = (value: number) => {
-    value = Math.max(1, Math.min(200, parseFloat(value.toFixed(1))));
     setLeverage(value);
     setCustomLeverage(value.toFixed(1));
   };
@@ -79,8 +76,8 @@ export default function MarketPage() {
   return (
     <main className="min-h-screen bg-bg text-faded p-4">
       <Navbar />
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mt-8">
-        <div className="border border-highlight rounded-2xl p-6 w-full col-span-1 max-w-md">
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-6 mt-8">
+        <div className="border border-highlight rounded-2xl p-6 w-full col-span-1 min-w-[280px]">
           <h2 className="text-lg font-bold text-neon">{primaryTitle}</h2>
           <p className="text-5xl font-mono text-neon">{primaryScore.toFixed(2)}</p>
           {primaryDelta !== null && (
@@ -103,7 +100,7 @@ export default function MarketPage() {
           )}
         </div>
 
-        <div className="border border-highlight bg-gray-950 rounded-2xl p-6 flex items-center justify-center min-h-[320px] col-span-4">
+        <div className="border border-highlight bg-gray-950 rounded-2xl p-6 flex items-center justify-center min-h-[400px] col-span-4">
           <div className="text-center">
             <p className="text-sm font-mono">
               [ {activeCategory ?? "Total RVI"} RVI Chart Placeholder ]
@@ -111,7 +108,7 @@ export default function MarketPage() {
           </div>
         </div>
 
-        <div className="border border-highlight rounded-2xl p-6 flex flex-col justify-start space-y-4 h-full col-span-1">
+        <div className="border border-highlight rounded-2xl p-6 flex flex-col justify-start space-y-4 h-full col-span-2 min-w-[280px]">
           <h3 className="text-lg font-bold text-neon">Trade</h3>
 
           <label className="text-sm font-mono text-white">
@@ -132,12 +129,14 @@ export default function MarketPage() {
               suppressContentEditableWarning
               onBlur={(e) => {
                 const input = e.currentTarget.textContent?.replace(/[^\d.]/g, "") || "1";
-                let parsed = parseFloat(input);
-                if (isNaN(parsed)) parsed = 1;
-                parsed = Math.max(1, Math.min(200, parseFloat(parsed.toFixed(1))));
-                setLeverage(parsed);
-                setCustomLeverage(parsed.toFixed(1));
-                e.currentTarget.textContent = `${parsed.toFixed(1)}x`;
+                const parsed = parseFloat(input);
+                if (!isNaN(parsed) && parsed >= 1 && parsed <= 200) {
+                  setLeverage(parsed);
+                  setCustomLeverage(parsed.toFixed(1));
+                } else {
+                  setLeverage(1);
+                  setCustomLeverage("1.0");
+                }
               }}
               className="ml-2 px-2 py-1 bg-gray-800 border border-highlight rounded-md text-white font-mono inline-block min-w-[60px] text-center"
             >
@@ -182,11 +181,7 @@ export default function MarketPage() {
           <p className="text-xs text-faded font-mono">
             Est. Position Size: <span className="text-white">${estimatedPositionSize}</span>
           </p>
-          {slPrice ? (
-            <p className="text-xs text-faded font-mono">
-              Stop Loss Price: <span className="text-white">${slPrice}</span>
-            </p>
-          ) : liquidationPrice && (
+          {liquidationPrice && (
             <p className="text-xs text-faded font-mono">
               Liquidation Price: <span className="text-white">${liquidationPrice}</span>
             </p>
