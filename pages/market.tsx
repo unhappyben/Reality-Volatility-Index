@@ -76,8 +76,8 @@ export default function MarketPage() {
   return (
     <main className="min-h-screen bg-bg text-faded p-4">
       <Navbar />
-      <div className="grid grid-cols-1 md:grid-cols-7 gap-6 mt-8">
-        <div className="border border-highlight rounded-2xl p-6 w-full col-span-1 min-w-[280px]">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 mt-8">
+        <div className="border border-highlight rounded-2xl p-6 w-full col-span-12 xl:col-span-3 min-w-[280px]">
           <h2 className="text-lg font-bold text-neon">{primaryTitle}</h2>
           <p className="text-5xl font-mono text-neon">{primaryScore.toFixed(2)}</p>
           {primaryDelta !== null && (
@@ -100,15 +100,15 @@ export default function MarketPage() {
           )}
         </div>
 
-        <div className="border border-highlight bg-gray-950 rounded-2xl p-6 flex items-center justify-center min-h-[400px] col-span-4">
+        <div className="border border-highlight bg-gray-950 rounded-2xl p-6 flex items-center justify-center min-h-[400px] col-span-12 xl:col-span-7">
           <div className="text-center">
             <p className="text-sm font-mono">
-              [ {activeCategory ?? "Total RVI"} RVI Chart Placeholder ]
+              [ {primaryTitle} RVI Chart Placeholder ]
             </p>
           </div>
         </div>
 
-        <div className="border border-highlight rounded-2xl p-6 flex flex-col justify-start space-y-4 h-full col-span-2 min-w-[280px]">
+        <div className="border border-highlight rounded-2xl p-6 flex flex-col justify-start space-y-4 h-full col-span-12 xl:col-span-2 min-w-[260px]">
           <h3 className="text-lg font-bold text-neon">Trade</h3>
 
           <label className="text-sm font-mono text-white">
