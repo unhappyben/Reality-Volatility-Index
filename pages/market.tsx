@@ -9,7 +9,7 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  CartesianGrid
+  CartesianGrid,
 } from "recharts";
 
 export default function MarketPage() {
@@ -22,7 +22,7 @@ export default function MarketPage() {
   const [stopLoss, setStopLoss] = useState<number | null>(null);
   const [latestData, setLatestData] = useState<{ totalRVI: number; categoryRVIs: Record<string, number> } | null>(null);
   const [history, setHistory] = useState<any[]>([]);
-  const [timeRange, setTimeRange] = useState<number>(12); // hours, default 12
+  const [timeRange, setTimeRange] = useState<number>(12);
 
   useEffect(() => {
     const loadData = async () => {
@@ -35,7 +35,8 @@ export default function MarketPage() {
 
         const historyData = await Promise.all(
           historyFiles.map(async (filename) => {
-            const timestamp = parseInt(filename.match(/(\d+)_aggregated\.json/)?.[1] ?? "0");
+            const match = filename.match(/(\d+)_aggregated\.json/);
+            const timestamp = match ? parseInt(match[1]) : 0;
             const data = await fetch(`/data/history/${filename}`).then((res) => res.json());
             return { timestamp, ...data };
           })
@@ -52,7 +53,7 @@ export default function MarketPage() {
 
   if (!latestData || history.length === 0) {
     return (
-      <main className="min-h-screen bg-bg text-faded p-4">
+      <main className="min-h-screen bg-bg text-white p-4">
         <Navbar />
         <p className="text-center mt-10">Loading RVI data...</p>
       </main>
@@ -60,28 +61,42 @@ export default function MarketPage() {
   }
 
   const primaryScore = activeCategory ? latestData.categoryRVIs[activeCategory] : latestData.totalRVI;
-  const primaryDelta = activeCategory ? null : 0;
   const primaryTitle = activeCategory ?? "Reality Volatility Index";
   const contractAmount = collateral ? (collateral * leverage) / primaryScore : 0;
   const estimatedPositionSize = (contractAmount * primaryScore).toFixed(2);
-  const notionalValue = estimatedPositionSize;
   const tpPrice = takeProfit ? (primaryScore * (1 + takeProfit / 100)).toFixed(2) : null;
   const slPrice = stopLoss ? (primaryScore * (1 - stopLoss / 100)).toFixed(2) : null;
   const liquidationPrice = !stopLoss
     ? (primaryScore - (primaryScore * 0.8) / leverage).toFixed(2)
     : null;
 
+  const now = Date.now() / 1000;
+  const rangeSeconds = timeRange * 60 * 60;
+  const chartData = history
+    .filter((entry) => now - entry.timestamp <= rangeSeconds)
+    .map((entry) => ({
+      timestamp: new Date(entry.timestamp * 1000).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      value: activeCategory ? entry.categoryRVIs[activeCategory] : entry.totalRVI,
+    }));
+
   const renderCategoryButtons = () => {
     const entries = Object.entries(latestData.categoryRVIs);
     const sorted = entries.sort(([a], [b]) => a.localeCompare(b));
     const final = activeCategory ? [...sorted, ["Total RVI", latestData.totalRVI]] : sorted;
-    return final.map(([category, rawScore]: [string, number]) => {
+    return final.map(([category, rawScore]) => {
       const score = typeof rawScore === "number" ? rawScore : parseFloat(rawScore);
       return (
         <button
           key={category}
-          className={`flex justify-between items-center border border-highlight rounded-md px-4 py-2 text-sm font-bold w-full hover:bg-highlight/10 transition-colors mb-1 ${activeCategory === category ? "text-neon" : "text-white"}`}
-          onClick={() => setActiveCategory(category === "Total RVI" ? null : category)}
+          className={`flex justify-between items-center border border-highlight rounded-md px-4 py-2 text-sm font-bold w-full hover:bg-highlight/10 transition-colors mb-1 ${
+            activeCategory === category ? "text-neon" : "text-white"
+          }`}
+          onClick={() =>
+            setActiveCategory(category === "Total RVI" ? null : String(category))
+          }
         >
           <span>{category}</span>
           <span>{score.toFixed(2)}</span>
@@ -90,20 +105,6 @@ export default function MarketPage() {
     });
   };
 
-  const handleLeverageChange = (value: number) => {
-    setLeverage(value);
-    setCustomLeverage(value.toFixed(1));
-  };
-
-  const now = Date.now() / 1000;
-  const rangeSeconds = timeRange * 60 * 60;
-  const chartData = history
-    .filter((entry) => now - entry.timestamp <= rangeSeconds)
-    .map((entry) => ({
-      timestamp: new Date(entry.timestamp * 1000).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
-      value: activeCategory ? entry.categoryRVIs[activeCategory] : entry.totalRVI,
-    }));
-
   const renderTimeRangeButtons = () => {
     const ranges = [1, 2, 4, 6, 12, 24];
     return (
@@ -111,7 +112,9 @@ export default function MarketPage() {
         {ranges.map((h) => (
           <button
             key={h}
-            className={`text-xs px-2 py-1 border rounded ${timeRange === h ? "bg-highlight text-black" : "border-highlight text-white"}`}
+            className={`text-xs px-2 py-1 border rounded ${
+              timeRange === h ? "bg-highlight text-black" : "border-highlight text-white"
+            }`}
             onClick={() => setTimeRange(h)}
           >
             {h}h
@@ -122,15 +125,12 @@ export default function MarketPage() {
   };
 
   return (
-    <main className="min-h-screen bg-bg text-faded p-4">
+    <main className="min-h-screen bg-bg text-white p-4">
       <Navbar />
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 mt-8">
-        <div className="border border-highlight rounded-2xl p-6 w-full col-span-12 xl:col-span-3 min-w-[280px]">
+        <div className="border border-highlight rounded-2xl p-6 col-span-12 xl:col-span-3">
           <h2 className="text-lg font-bold text-neon">{primaryTitle}</h2>
           <p className="text-5xl font-mono text-neon">{primaryScore.toFixed(2)}</p>
-          {primaryDelta !== null && (
-            <p className="text-xs text-green-400 font-mono">▲ {primaryDelta.toFixed(2)} in last 24h</p>
-          )}
 
           <button
             className="mt-4 text-sm text-neon underline"
@@ -142,8 +142,10 @@ export default function MarketPage() {
           {showBreakdown && <div className="mt-4 space-y-1">{renderCategoryButtons()}</div>}
         </div>
 
-        <div className="border border-highlight bg-gray-950 rounded-2xl p-6 flex flex-col items-center justify-start min-h-[400px] col-span-12 xl:col-span-7">
-          <h3 className="text-md text-neon font-bold mb-2">{primaryTitle} – Last {timeRange}h</h3>
+        <div className="border border-highlight bg-gray-950 rounded-2xl p-6 col-span-12 xl:col-span-7">
+          <h3 className="text-md text-neon font-bold mb-2 text-center">
+            {primaryTitle} – Last {timeRange}h
+          </h3>
           {renderTimeRangeButtons()}
           <ResponsiveContainer width="100%" height={350}>
             <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
@@ -161,43 +163,38 @@ export default function MarketPage() {
                 stroke="#00FF88"
                 strokeWidth={2}
                 dot={false}
-                name={primaryTitle}
               />
             </LineChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="border border-highlight rounded-2xl p-6 flex flex-col justify-start space-y-4 h-full col-span-12 xl:col-span-2 min-w-[260px]">
+        <div className="border border-highlight rounded-2xl p-6 col-span-12 xl:col-span-2">
           <h3 className="text-lg font-bold text-neon">Trade</h3>
 
           <label className="text-sm font-mono text-white">
             Collateral ($)
             <input
               type="number"
-              min="0"
               value={collateral ?? ""}
               onChange={(e) => setCollateral(parseFloat(e.target.value) || null)}
-              className="mt-1 w-full px-2 py-1 bg-gray-800 border border-highlight rounded-md text-white font-mono"
+              className="mt-1 w-full px-2 py-1 bg-gray-800 border border-highlight rounded-md"
             />
           </label>
 
           <label className="text-sm font-mono text-white">
-            Leverage:
+            Leverage
             <span
               contentEditable
               suppressContentEditableWarning
               onBlur={(e) => {
                 const input = e.currentTarget.textContent?.replace(/[^\d.]/g, "") || "1";
                 const parsed = parseFloat(input);
-                if (!isNaN(parsed) && parsed >= 1 && parsed <= 200) {
+                if (!isNaN(parsed)) {
                   setLeverage(parsed);
                   setCustomLeverage(parsed.toFixed(1));
-                } else {
-                  setLeverage(1);
-                  setCustomLeverage("1.0");
                 }
               }}
-              className="ml-2 px-2 py-1 bg-gray-800 border border-highlight rounded-md text-white font-mono inline-block min-w-[60px] text-center"
+              className="ml-2 inline-block min-w-[60px] text-center px-2 py-1 bg-gray-800 border border-highlight rounded-md"
             >
               {customLeverage}x
             </span>
@@ -208,7 +205,7 @@ export default function MarketPage() {
               step="0.1"
               value={leverage}
               onChange={(e) => handleLeverageChange(parseFloat(e.target.value))}
-              className="w-full mt-2 appearance-none bg-gray-700 h-2 rounded-lg [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-neon [&::-webkit-slider-thumb]:cursor-pointer"
+              className="w-full mt-2 appearance-none bg-gray-700 h-2 rounded-lg"
             />
           </label>
 
@@ -218,8 +215,8 @@ export default function MarketPage() {
               type="number"
               value={takeProfit ?? ""}
               onChange={(e) => setTakeProfit(parseFloat(e.target.value))}
-              className="mt-1 w-full px-2 py-1 bg-gray-800 border border-highlight rounded-md text-white font-mono"
-              placeholder="e.g. 20 for 20%"
+              className="mt-1 w-full px-2 py-1 bg-gray-800 border border-highlight rounded-md"
+              placeholder="e.g. 20"
             />
           </label>
 
@@ -229,27 +226,20 @@ export default function MarketPage() {
               type="number"
               value={stopLoss ?? ""}
               onChange={(e) => setStopLoss(parseFloat(e.target.value))}
-              className="mt-1 w-full px-2 py-1 bg-gray-800 border border-highlight rounded-md text-white font-mono"
-              placeholder="e.g. 10 for 10%"
+              className="mt-1 w-full px-2 py-1 bg-gray-800 border border-highlight rounded-md"
+              placeholder="e.g. 10"
             />
           </label>
 
-          <p className="text-xs text-faded font-mono">
-            Notional Value: <span className="text-white">${notionalValue}</span>
-          </p>
-          <p className="text-xs text-faded font-mono">
-            Est. Position Size: <span className="text-white">${estimatedPositionSize}</span>
-          </p>
+          <p className="text-xs font-mono mt-2">Notional: <span className="text-white">${estimatedPositionSize}</span></p>
           {liquidationPrice && (
-            <p className="text-xs text-faded font-mono">
-              Liquidation Price: <span className="text-white">${liquidationPrice}</span>
-            </p>
+            <p className="text-xs font-mono">Liquidation: <span className="text-white">${liquidationPrice}</span></p>
           )}
 
-          <button className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-xl">
+          <button className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-xl mt-4">
             Buy {primaryTitle}
           </button>
-          <button className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl">
+          <button className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl mt-2">
             Sell {primaryTitle}
           </button>
         </div>
