@@ -2,7 +2,7 @@ name: Update RVI Data
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # Run every 5 minutes
+    - cron: '*/30 * * * *'  # Run every 30 minutes
   workflow_dispatch:  # Allow manual triggers too
 
 permissions:
