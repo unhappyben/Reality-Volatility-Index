@@ -1,5 +1,3 @@
-// fetch_and_transform_rvi.js
-
 import fs from "fs";
 import path from "path";
 import fetch from "node-fetch";
@@ -7,7 +5,12 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const API_URL = "https://api.data.adj.news/api/markets";
-const SNAPSHOT_DIR = "./snapshots";
+
+// 🔁 Resolve from root regardless of where script is run
+const ROOT_DIR = path.resolve(__dirname, "..");
+const SNAPSHOT_DIR = path.join(ROOT_DIR, "snapshots");
+const PUBLIC_DATA_DIR = path.join(ROOT_DIR, "public/data");
+const HISTORY_DIR = path.join(PUBLIC_DATA_DIR, "history");
 
 const getUnix5MinEpoch = () => {
   const now = Math.floor(Date.now() / 1000);
@@ -34,8 +37,8 @@ const fetchMarkets = async () => {
 };
 
 const saveSnapshot = (data, timestamp) => {
-  if (!fs.existsSync(SNAPSHOT_DIR)) fs.mkdirSync(SNAPSHOT_DIR);
-  const filename = `${SNAPSHOT_DIR}/${timestamp}_markets_polymarket.json`;
+  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+  const filename = path.join(SNAPSHOT_DIR, `${timestamp}_markets_polymarket.json`);
   fs.writeFileSync(filename, JSON.stringify(data, null, 2));
   console.log(`✅ Snapshot saved: ${filename}`);
 };
@@ -82,9 +85,7 @@ const applyTimeHorizonScore = (market) => {
   return 0.2;
 };
 
-const applyVolatilityScore = (market) => {
-  return 0.7; // mock value (replace when you have rolling stddev)
-};
+const applyVolatilityScore = () => 0.7; // placeholder
 
 const applyLiquidityScore = (market, volumes) => {
   const sorted = [...volumes].sort((a, b) => b - a);
@@ -96,7 +97,7 @@ const applyLiquidityScore = (market, volumes) => {
   return 0.5;
 };
 
-const applyPlatformDiversityScore = () => 1.0; // mock value
+const applyPlatformDiversityScore = () => 1.0; // placeholder
 
 const transformMarkets = (markets) => {
   const volumes = markets.map((m) => m.volume);
@@ -161,49 +162,43 @@ const aggregateRVIs = (transformed) => {
   return { categoryRVIs, totalRVI: Number(totalRVI.toFixed(2)) };
 };
 
-
 const run = async () => {
-    const timestamp = getUnix5MinEpoch();
-    const data = await fetchMarkets();
-    saveSnapshot(data, timestamp);
-  
-    const transformed = transformMarkets(data);
-    const transformedPath = `${SNAPSHOT_DIR}/${timestamp}_transformed.json`;
-    fs.writeFileSync(transformedPath, JSON.stringify(transformed, null, 2));
-    console.log(`✅ Transformed data saved.`);
-  
-    const { categoryRVIs, totalRVI } = aggregateRVIs(transformed);
-    const aggregatedOutput = {
-      totalRVI,
-      categoryRVIs
-    };
-  
-    const aggregatedPath = `${SNAPSHOT_DIR}/${timestamp}_aggregated.json`;
-    fs.writeFileSync(aggregatedPath, JSON.stringify(aggregatedOutput, null, 2));
-    console.log(`✅ Aggregated RVI saved.`);
-  
-    // ✅ COPY LATEST SNAPSHOT TO PUBLIC
-    const publicLatestPath = `./public/data/latest_aggregated.json`;
-    fs.mkdirSync("./public/data", { recursive: true });
-    fs.writeFileSync(publicLatestPath, JSON.stringify(aggregatedOutput, null, 2));
-    console.log(`✅ Copied latest RVI to: ${publicLatestPath}`);
-  
-    // ✅ ALSO COPY TO HISTORY
-    const historyDir = "./public/data/history";
-    fs.mkdirSync(historyDir, { recursive: true });
-  
-    const historyFilePath = `${historyDir}/${timestamp}_aggregated.json`;
-    fs.writeFileSync(historyFilePath, JSON.stringify(aggregatedOutput, null, 2));
-    console.log(`✅ Saved history file: ${historyFilePath}`);
-  
-    // ✅ UPDATE index.json
-    const files = fs.readdirSync(historyDir)
-      .filter(name => name.endsWith("_aggregated.json"))
-      .sort(); // sorted oldest to newest
-  
-    const indexPath = `${historyDir}/index.json`;
-    fs.writeFileSync(indexPath, JSON.stringify(files, null, 2));
-    console.log(`✅ Updated history index.json`);
-  };
+  const timestamp = getUnix5MinEpoch();
+  const data = await fetchMarkets();
+  saveSnapshot(data, timestamp);
+
+  const transformed = transformMarkets(data);
+  const transformedPath = path.join(SNAPSHOT_DIR, `${timestamp}_transformed.json`);
+  fs.writeFileSync(transformedPath, JSON.stringify(transformed, null, 2));
+  console.log(`✅ Transformed data saved.`);
+
+  const { categoryRVIs, totalRVI } = aggregateRVIs(transformed);
+  const aggregatedOutput = { totalRVI, categoryRVIs };
+
+  const aggregatedPath = path.join(SNAPSHOT_DIR, `${timestamp}_aggregated.json`);
+  fs.writeFileSync(aggregatedPath, JSON.stringify(aggregatedOutput, null, 2));
+  console.log(`✅ Aggregated RVI saved.`);
+
+  // Save latest version to public/data
+  fs.mkdirSync(PUBLIC_DATA_DIR, { recursive: true });
+  const publicLatestPath = path.join(PUBLIC_DATA_DIR, "latest_aggregated.json");
+  fs.writeFileSync(publicLatestPath, JSON.stringify(aggregatedOutput, null, 2));
+  console.log(`✅ Copied latest RVI to: ${publicLatestPath}`);
+
+  // Save to public/data/history
+  fs.mkdirSync(HISTORY_DIR, { recursive: true });
+  const historyFilePath = path.join(HISTORY_DIR, `${timestamp}_aggregated.json`);
+  fs.writeFileSync(historyFilePath, JSON.stringify(aggregatedOutput, null, 2));
+  console.log(`✅ Saved history file: ${historyFilePath}`);
+
+  // Update history index.json
+  const files = fs.readdirSync(HISTORY_DIR)
+    .filter(name => name.endsWith("_aggregated.json"))
+    .sort();
+
+  const indexPath = path.join(HISTORY_DIR, "index.json");
+  fs.writeFileSync(indexPath, JSON.stringify(files, null, 2));
+  console.log(`✅ Updated history index.json`);
+};
 
 run().catch(console.error);
