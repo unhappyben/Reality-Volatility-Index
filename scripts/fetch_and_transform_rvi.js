@@ -2,16 +2,24 @@ import fs from "fs";
 import path from "path";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
+
+// ✅ Derive __dirname manually for ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// ✅ Use root-relative path from inside /scripts
+const ROOT_DIR = path.resolve(__dirname, "..");
+
 dotenv.config();
-
-const ROOT_DIR = process.cwd();
-
 
 const API_URL = "https://api.data.adj.news/api/markets";
 
 const SNAPSHOT_DIR = path.join(ROOT_DIR, "snapshots");
 const PUBLIC_DATA_DIR = path.join(ROOT_DIR, "public/data");
 const HISTORY_DIR = path.join(PUBLIC_DATA_DIR, "history");
+
 
 const getUnix5MinEpoch = () => {
   const now = Math.floor(Date.now() / 1000);
