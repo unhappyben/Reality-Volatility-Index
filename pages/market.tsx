@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  ReferenceLine
 } from "recharts";
 
 export default function MarketPage() {
@@ -22,10 +23,13 @@ export default function MarketPage() {
   const [stopLoss, setStopLoss] = useState<number | null>(null);
   const [latestData, setLatestData] = useState<{ totalRVI: number; categoryRVIs: Record<string, number> } | null>(null);
   const [history, setHistory] = useState<any[]>([]);
-  const [timeRange, setTimeRange] = useState<number>(12);
+  const [timeRange, setTimeRange] = useState<number>(24);
   const handleLeverageChange = (value: number) => {
     setLeverage(value);
     setCustomLeverage(value.toFixed(1));
+  };
+  const formatCurrency = (value) => {
+    return value ? parseFloat(value).toFixed(2) : "0.00";
   };
   
 
@@ -71,9 +75,11 @@ export default function MarketPage() {
   const estimatedPositionSize = (contractAmount * primaryScore).toFixed(2);
   const tpPrice = takeProfit ? (primaryScore * (1 + takeProfit / 100)).toFixed(2) : null;
   const slPrice = stopLoss ? (primaryScore * (1 - stopLoss / 100)).toFixed(2) : null;
-  const liquidationPrice = !stopLoss
-    ? (primaryScore - (primaryScore * 0.8) / leverage).toFixed(2)
-    : null;
+  const calculatedLiquidationPrice = (primaryScore - (primaryScore * 0.8) / leverage).toFixed(2);
+  const liquidationPrice = !stopLoss ? calculatedLiquidationPrice : null;
+  const isStopLossTooLow = stopLoss
+  ? parseFloat(slPrice) <= parseFloat(calculatedLiquidationPrice)
+  : false;
 
   const now = Date.now() / 1000;
   const rangeSeconds = timeRange * 60 * 60;
@@ -156,7 +162,27 @@ export default function MarketPage() {
             <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#444" />
               <XAxis dataKey="timestamp" tick={{ fontSize: 12, fill: "#fff" }} />
-              <YAxis tick={{ fontSize: 12, fill: "#fff" }} />
+              <YAxis 
+                tick={{ fontSize: 12, fill: "#fff" }}
+                domain={[
+                  dataMin => {
+                    const min = Math.min(
+                      dataMin, 
+                      slPrice ? parseFloat(slPrice) : Infinity, 
+                      liquidationPrice ? parseFloat(liquidationPrice) : Infinity
+                    );
+                    return min * 0.9; // Add 10% padding below
+                  },
+                  dataMax => {
+                    const max = Math.max(
+                      dataMax, 
+                      tpPrice ? parseFloat(tpPrice) : 0
+                    );
+                    return max * 1.1; // Add 10% padding above
+                  }
+                ]}
+                tickFormatter={(value) => value.toFixed(2)}
+              />
               <Tooltip
                 contentStyle={{ backgroundColor: "#111", borderColor: "#00FF88", color: "#fff" }}
                 labelStyle={{ color: "#ccc" }}
@@ -169,6 +195,48 @@ export default function MarketPage() {
                 strokeWidth={2}
                 dot={false}
               />
+              
+              {tpPrice && (
+                <ReferenceLine 
+                  y={parseFloat(tpPrice)} 
+                  stroke="#4CAF50" 
+                  strokeDasharray="3 3" 
+                  label={{ 
+                    value: `TP: $${formatCurrency(tpPrice)}`, 
+                    position: 'right',
+                    fill: '#4CAF50',
+                    fontSize: 12
+                  }} 
+                />
+              )}
+
+              {slPrice && (
+                <ReferenceLine 
+                  y={parseFloat(slPrice)} 
+                  stroke="#FF5252" 
+                  strokeDasharray="3 3" 
+                  label={{ 
+                    value: `SL: $${formatCurrency(slPrice)}`, 
+                    position: 'right',
+                    fill: '#FF5252',
+                    fontSize: 12
+                  }} 
+                />
+              )}
+
+              {liquidationPrice && !stopLoss && (
+                <ReferenceLine 
+                  y={parseFloat(liquidationPrice)} 
+                  stroke="#FF9800" 
+                  strokeDasharray="3 3" 
+                  label={{ 
+                    value: `Liq: $${formatCurrency(liquidationPrice)}`, 
+                    position: 'right',
+                    fill: '#FF9800',
+                    fontSize: 12
+                  }} 
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -236,9 +304,31 @@ export default function MarketPage() {
             />
           </label>
 
-          <p className="text-xs font-mono mt-2">Notional: <span className="text-white">${estimatedPositionSize}</span></p>
+          {isStopLossTooLow && (
+              <div className="mt-2 py-1 px-2 bg-red-900/50 border border-red-500 rounded-md">
+                <p className="text-xs text-red-400 font-bold">
+                  ⚠️ Stop Loss lower than Liquidation Price!
+                </p>
+              </div>
+            )}
+
+          <p className="text-xs font-mono mt-2">
+            Notional: <span className="text-white">${formatCurrency(estimatedPositionSize)}</span>
+          </p>
+          {tpPrice && (
+            <p className="text-xs font-mono">
+              Take Profit: <span className="text-green-400">${formatCurrency(tpPrice)}</span>
+            </p>
+          )}
+          {slPrice && (
+            <p className="text-xs font-mono">
+              Stop Loss: <span className="text-red-400">${formatCurrency(slPrice)}</span>
+            </p>
+          )}
           {liquidationPrice && (
-            <p className="text-xs font-mono">Liquidation: <span className="text-white">${liquidationPrice}</span></p>
+            <p className="text-xs font-mono">
+              Liquidation: <span className="text-orange-400">${formatCurrency(liquidationPrice)}</span>
+            </p>
           )}
 
           <button className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-xl mt-4">
