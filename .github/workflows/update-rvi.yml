@@ -24,14 +24,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
       
-      - name: Create .env file
-        run: |
-          echo "ADJACENT_API_KEY=${{ secrets.ADJACENT_API_KEY }}" > .env
-        
       - name: Run update script
         run: |
           cd scripts
           npm install
+          # Create .env file in the scripts directory
+          echo "ADJACENT_API_KEY=${{ secrets.ADJACENT_API_KEY }}" > .env
           node fetch_and_transform_rvi.js
         
       - name: Commit and push changes
