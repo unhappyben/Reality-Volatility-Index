@@ -142,7 +142,21 @@ export default function MarketPage() {
         <div className="border border-highlight rounded-2xl p-6 col-span-12 xl:col-span-3">
           <h2 className="text-lg font-bold text-neon">{primaryTitle}</h2>
           <p className="text-5xl font-mono text-neon">{primaryScore.toFixed(2)}</p>
+            {history.length > 1 && (() => {
+            const previous = activeCategory
+              ? history[history.length - 2].categoryRVIs[activeCategory]
+              : history[history.length - 2].totalRVI;
 
+            const delta = primaryScore - previous;
+            const deltaPercent = ((delta / previous) * 100).toFixed(2);
+            const isPositive = delta >= 0;
+
+            return (
+                <p className={`text-sm mt-2 font-mono transition-all duration-300 ease-in-out ${isPositive ? "text-green-400" : "text-red-400"}`}>
+                {isPositive ? "▲" : "▼"} {delta.toFixed(2)} ({isPositive ? "↑" : "↓"} {deltaPercent}%)
+              </p>
+            );
+            })()}
           <button
             className="mt-4 text-sm text-neon underline"
             onClick={() => setShowBreakdown(!showBreakdown)}
