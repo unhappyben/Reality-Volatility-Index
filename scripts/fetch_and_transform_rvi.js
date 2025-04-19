@@ -9,8 +9,6 @@ const ROOT_DIR = process.cwd();
 
 const API_URL = "https://api.data.adj.news/api/markets";
 
-// 🔁 Resolve from root regardless of where script is run
-const ROOT_DIR = path.resolve(__dirname, "..");
 const SNAPSHOT_DIR = path.join(ROOT_DIR, "snapshots");
 const PUBLIC_DATA_DIR = path.join(ROOT_DIR, "public/data");
 const HISTORY_DIR = path.join(PUBLIC_DATA_DIR, "history");
