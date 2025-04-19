@@ -1,0 +1,47 @@
+name: Manual Test RVI Update
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-rvi-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Run update script manually
+        run: |
+          cd scripts
+          npm install
+          echo "ADJACENT_API_KEY=${{ secrets.ADJACENT_API_KEY }}" > .env
+          node fetch_and_transform_rvi.js
+      - name: Debug Git Status
+        run: |
+          echo "🔍 Checking Git Status"
+          git status
+          git diff
+          git ls-files --modified
+          echo "📁 Listing changed files:"
+          git ls-files -m
+      - name: Commit and Push (force test)
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'actions@github.com'
+          git add public/data snapshots || true
+          git commit -m "Manual RVI test commit" || echo "⚠️ Nothing to commit"
+          git push || echo "⚠️ Push failed"
