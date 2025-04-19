@@ -11,27 +11,35 @@ permissions:
 jobs:
   update-data:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      
-      - name: Setup Node
+
+      - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
-          
-      - name: Install dependencies
+
+      - name: Install root dependencies
         run: npm ci
-      
-      - name: Run update script
+
+      - name: Run RVI update script
         run: |
           cd scripts
           npm install
-          # Create .env file in the scripts directory
           echo "ADJACENT_API_KEY=${{ secrets.ADJACENT_API_KEY }}" > .env
           node fetch_and_transform_rvi.js
-        
+
+      # Optional debugging block – enable if needed
+      # - name: Debug Git Status
+      #   run: |
+      #     git status
+      #     git diff
+      #     git ls-files -m
+
       - name: Commit and push changes
         run: |
           git config --global user.name 'GitHub Actions Bot'
