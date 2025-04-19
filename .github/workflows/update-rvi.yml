@@ -29,7 +29,10 @@ jobs:
           echo "ADJACENT_API_KEY=${{ secrets.ADJACENT_API_KEY }}" > .env
         
       - name: Run update script
-        run: node scripts/fetch_and_transform_rvi.js
+        run: |
+          cd scripts
+          npm install
+          node fetch_and_transform_rvi.js
         
       - name: Commit and push changes
         run: |
