@@ -7,6 +7,7 @@ export default function Navbar() {
       <div className="space-x-4">
         <Link href="/" className="hover:underline">Home</Link>
         <Link href="/market" className="hover:underline">Market</Link>
+        <Link href="/marketOptions" className="hover:underline">Market Options</Link>
       </div>
     </nav>
   )
