@@ -31,6 +31,8 @@ jobs:
           cd scripts
           npm install
           echo "ADJACENT_API_KEY=${{ secrets.ADJACENT_API_KEY }}" > .env
+          echo "SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}" >> .env
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
           node fetch_and_transform_rvi.js
 
       # Optional debugging block – enable if needed
