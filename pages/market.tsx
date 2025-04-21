@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Navbar from "@/components/Navbar";
+import { createClient } from '@supabase/supabase-js';
 import {
   LineChart,
   Line,
@@ -12,6 +13,11 @@ import {
   CartesianGrid,
   ReferenceLine
 } from "recharts";
+
+// Initialize Supabase client
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function MarketPage() {
   const [showBreakdown, setShowBreakdown] = useState(true);
@@ -24,47 +30,125 @@ export default function MarketPage() {
   const [latestData, setLatestData] = useState<{ totalRVI: number; categoryRVIs: Record<string, number> } | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [timeRange, setTimeRange] = useState<number>(24);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
   const handleLeverageChange = (value: number) => {
     setLeverage(value);
     setCustomLeverage(value.toFixed(1));
   };
+  
   const formatCurrency = (value) => {
     return value ? parseFloat(value).toFixed(2) : "0.00";
   };
   
+  // Function to process data from Supabase into the format we need
+  const processRVIData = (data) => {
+    if (!data || data.length === 0) return null;
+    
+    // Group by timestamp
+    const groupedByTimestamp = {};
+    data.forEach(row => {
+      if (!groupedByTimestamp[row.timestamp]) {
+        groupedByTimestamp[row.timestamp] = {
+          timestamp: row.timestamp,
+          categoryRVIs: {}
+        };
+      }
+      
+      if (row.category === 'Total') {
+        groupedByTimestamp[row.timestamp].totalRVI = row.rvi;
+      } else {
+        groupedByTimestamp[row.timestamp].categoryRVIs[row.category] = row.rvi;
+      }
+    });
+    
+    // Convert to array and sort by timestamp
+    return Object.values(groupedByTimestamp).sort((a, b) => a.timestamp - b.timestamp);
+  };
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const latest = await fetch("/data/latest_aggregated.json").then((res) => res.json());
-        setLatestData(latest);
-
-        const historyRes = await fetch("/data/history/index.json");
-        const historyFiles: string[] = await historyRes.json();
-
-        const historyData = await Promise.all(
-          historyFiles.map(async (filename) => {
-            const match = filename.match(/(\d+)_aggregated\.json/);
-            const timestamp = match ? parseInt(match[1]) : 0;
-            const data = await fetch(`/data/history/${filename}`).then((res) => res.json());
-            return { timestamp, ...data };
-          })
+        setLoading(true);
+        
+        // Fetch latest data
+        const { data: latestTimestamp, error: timestampError } = await supabase
+          .from('rvi_aggregate')
+          .select('timestamp')
+          .order('timestamp', { ascending: false })
+          .limit(1);
+        
+        if (timestampError) throw new Error(`Error fetching latest timestamp: ${timestampError.message}`);
+        if (!latestTimestamp || latestTimestamp.length === 0) throw new Error("No RVI data found");
+        
+        const { data: latestRows, error: latestError } = await supabase
+          .from('rvi_aggregate')
+          .select('*')
+          .eq('timestamp', latestTimestamp[0].timestamp);
+        
+        if (latestError) throw new Error(`Error fetching latest RVI data: ${latestError.message}`);
+        
+        // Process latest data
+        const totalRVI = latestRows.find(row => row.category === 'Total')?.rvi || 0;
+        const categoryRVIs = Object.fromEntries(
+          latestRows
+            .filter(row => row.category !== 'Total')
+            .map(row => [row.category, row.rvi])
         );
-
-        const sortedHistory = historyData.sort((a, b) => a.timestamp - b.timestamp);
-        setHistory(sortedHistory);
+        
+        setLatestData({ totalRVI, categoryRVIs });
+        
+        // Fetch historical data
+        const now = Math.floor(Date.now() / 1000);
+        const historyTimeLimit = now - (timeRange * 60 * 60 * 24); // Convert days to seconds
+        
+        const { data: historyRows, error: historyError } = await supabase
+          .from('rvi_aggregate')
+          .select('*')
+          .gt('timestamp', historyTimeLimit)
+          .order('timestamp', { ascending: true });
+        
+        if (historyError) throw new Error(`Error fetching historical data: ${historyError.message}`);
+        
+        // Process historical data
+        const processedHistory = processRVIData(historyRows);
+        if (processedHistory) setHistory(processedHistory);
+        
       } catch (err) {
         console.error("Failed to load RVI data", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
     };
+    
     loadData();
-  }, []);
+  }, [timeRange]);
+
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-bg text-white p-4">
+        <Navbar />
+        <p className="text-center mt-10">Loading RVI data...</p>
+      </main>
+    );
+  }
+  
+  if (error) {
+    return (
+      <main className="min-h-screen bg-bg text-white p-4">
+        <Navbar />
+        <p className="text-center mt-10 text-red-500">Error: {error}</p>
+      </main>
+    );
+  }
 
   if (!latestData || history.length === 0) {
     return (
       <main className="min-h-screen bg-bg text-white p-4">
         <Navbar />
-        <p className="text-center mt-10">Loading RVI data...</p>
+        <p className="text-center mt-10">No RVI data available</p>
       </main>
     );
   }

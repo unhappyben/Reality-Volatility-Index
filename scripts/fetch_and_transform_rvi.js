@@ -4,6 +4,7 @@ import fetch from "node-fetch";
 import dotenv from "dotenv";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { createClient } from "@supabase/supabase-js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,6 +12,11 @@ const __dirname = dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
 
 dotenv.config();
+
+// Supabase configuration
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 const API_URL = "https://api.data.adj.news/api/markets";
 
@@ -168,6 +174,92 @@ const aggregateRVIs = (transformed) => {
   return { categoryRVIs, totalRVI: Number(totalRVI.toFixed(2)) };
 };
 
+// Function to save aggregated RVI data to Supabase
+const saveRVItoSupabase = async (timestamp, aggregatedData) => {
+  try {
+    // Insert total RVI
+    const { error: totalError } = await supabase
+      .from('rvi_aggregate')
+      .insert({
+        id: timestamp.toString(),
+        snapshot_id: `${timestamp}_aggregated.json`,
+        timestamp: timestamp,
+        category: 'Total',
+        rvi: aggregatedData.totalRVI
+      });
+    
+    if (totalError) throw new Error(`Error inserting total RVI: ${totalError.message}`);
+    
+    // Insert category RVIs
+    for (const [category, value] of Object.entries(aggregatedData.categoryRVIs)) {
+      const { error } = await supabase
+        .from('rvi_aggregate')
+        .insert({
+          id: `${timestamp}_${category.replace(/\s+/g, '_')}`,
+          snapshot_id: `${timestamp}_aggregated.json`,
+          timestamp: timestamp,
+          category: category,
+          rvi: value
+        });
+      
+      if (error) throw new Error(`Error inserting ${category}: ${error.message}`);
+    }
+    
+    console.log('✅ Saved RVI data to Supabase');
+  } catch (error) {
+    console.error('Error saving to Supabase:', error);
+    throw error;
+  }
+};
+
+// Function to fetch the latest RVI data from Supabase
+const fetchLatestRVIFromSupabase = async () => {
+  try {
+    // Get the latest timestamp
+    const { data: latestTimestamp, error: timestampError } = await supabase
+      .from('rvi_aggregate')
+      .select('timestamp')
+      .order('timestamp', { ascending: false })
+      .limit(1);
+    
+    if (timestampError) throw new Error(`Error fetching latest timestamp: ${timestampError.message}`);
+    if (!latestTimestamp || latestTimestamp.length === 0) return null;
+    
+    // Get all records with that timestamp
+    const { data, error } = await supabase
+      .from('rvi_aggregate')
+      .select('*')
+      .eq('timestamp', latestTimestamp[0].timestamp);
+    
+    if (error) throw new Error(`Error fetching latest RVI data: ${error.message}`);
+    
+    return data;
+  } catch (error) {
+    console.error('Error fetching from Supabase:', error);
+    throw error;
+  }
+};
+
+// Function to fetch RVI history from Supabase
+const fetchRVIHistoryFromSupabase = async (limit = 50) => {
+  try {
+    // Get unique timestamps ordered by most recent
+    const { data: timestamps, error: timestampError } = await supabase
+      .from('rvi_aggregate')
+      .select('timestamp')
+      .order('timestamp', { ascending: false })
+      .limit(limit);
+    
+    if (timestampError) throw new Error(`Error fetching timestamps: ${timestampError.message}`);
+    
+    // Return list of unique snapshot_ids
+    return timestamps.map(t => `${t.timestamp}_aggregated.json`);
+  } catch (error) {
+    console.error('Error fetching history from Supabase:', error);
+    throw error;
+  }
+};
+
 const run = async () => {
   const timestamp = getUnix5MinEpoch();
   const data = await fetchMarkets();
@@ -185,26 +277,36 @@ const run = async () => {
   fs.writeFileSync(aggregatedPath, JSON.stringify(aggregatedOutput, null, 2));
   console.log(`✅ Aggregated RVI saved.`);
 
-  // Save latest version to public/data
+  // Save to Supabase
+  await saveRVItoSupabase(timestamp, aggregatedOutput);
+
+  // Save latest version to public/data (now fetching from Supabase)
   fs.mkdirSync(PUBLIC_DATA_DIR, { recursive: true });
-  const publicLatestPath = path.join(PUBLIC_DATA_DIR, "latest_aggregated.json");
-  fs.writeFileSync(publicLatestPath, JSON.stringify(aggregatedOutput, null, 2));
-  console.log(`✅ Copied latest RVI to: ${publicLatestPath}`);
+  const latestData = await fetchLatestRVIFromSupabase();
+  
+  if (latestData) {
+    // Format into the expected structure
+    const formattedLatest = {
+      totalRVI: latestData.find(item => item.category === 'Total')?.rvi || 0,
+      categoryRVIs: Object.fromEntries(
+        latestData
+          .filter(item => item.category !== 'Total')
+          .map(item => [item.category, item.rvi])
+      )
+    };
+    
+    const publicLatestPath = path.join(PUBLIC_DATA_DIR, "latest_aggregated.json");
+    fs.writeFileSync(publicLatestPath, JSON.stringify(formattedLatest, null, 2));
+    console.log(`✅ Saved latest RVI from Supabase to: ${publicLatestPath}`);
+  }
 
-  // Save to public/data/history
+  // Update history index.json (now fetching from Supabase)
   fs.mkdirSync(HISTORY_DIR, { recursive: true });
-  const historyFilePath = path.join(HISTORY_DIR, `${timestamp}_aggregated.json`);
-  fs.writeFileSync(historyFilePath, JSON.stringify(aggregatedOutput, null, 2));
-  console.log(`✅ Saved history file: ${historyFilePath}`);
-
-  // Update history index.json
-  const files = fs.readdirSync(HISTORY_DIR)
-    .filter(name => name.endsWith("_aggregated.json"))
-    .sort();
-
+  const historyFiles = await fetchRVIHistoryFromSupabase();
+  
   const indexPath = path.join(HISTORY_DIR, "index.json");
-  fs.writeFileSync(indexPath, JSON.stringify(files, null, 2));
-  console.log(`✅ Updated history index.json`);
+  fs.writeFileSync(indexPath, JSON.stringify(historyFiles, null, 2));
+  console.log(`✅ Updated history index.json with data from Supabase`);
 };
 
 run().catch(console.error);
