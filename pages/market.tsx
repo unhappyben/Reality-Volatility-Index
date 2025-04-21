@@ -14,6 +14,12 @@ import {
   ReferenceLine
 } from "recharts";
 
+interface GroupedRVIData {
+  timestamp: number;
+  totalRVI?: number;
+  categoryRVIs: Record<string, number>;
+}
+
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -28,8 +34,7 @@ export default function MarketPage() {
   const [takeProfit, setTakeProfit] = useState<number | null>(null);
   const [stopLoss, setStopLoss] = useState<number | null>(null);
   const [latestData, setLatestData] = useState<{ totalRVI: number; categoryRVIs: Record<string, number> } | null>(null);
-  const [history, setHistory] = useState<any[]>([]);
-  const [timeRange, setTimeRange] = useState<number>(24);
+  const [history, setHistory] = useState<GroupedRVIData[]>([]);  const [timeRange, setTimeRange] = useState<number>(24);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -42,12 +47,11 @@ export default function MarketPage() {
     return value ? parseFloat(value).toFixed(2) : "0.00";
   };
   
-  // Function to process data from Supabase into the format we need
-  const processRVIData = (data) => {
+  const processRVIData = (data: any[]): GroupedRVIData[] | null => {
     if (!data || data.length === 0) return null;
     
     // Group by timestamp
-    const groupedByTimestamp = {};
+    const groupedByTimestamp: Record<number, GroupedRVIData> = {};
     data.forEach(row => {
       if (!groupedByTimestamp[row.timestamp]) {
         groupedByTimestamp[row.timestamp] = {
