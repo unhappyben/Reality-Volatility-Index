@@ -34,9 +34,12 @@ export default function MarketPage() {
   const [takeProfit, setTakeProfit] = useState<number | null>(null);
   const [stopLoss, setStopLoss] = useState<number | null>(null);
   const [latestData, setLatestData] = useState<{ totalRVI: number; categoryRVIs: Record<string, number> } | null>(null);
-  const [history, setHistory] = useState<GroupedRVIData[]>([]);  const [timeRange, setTimeRange] = useState<number>(24);
+  const [history, setHistory] = useState<GroupedRVIData[]>([]);
+  const [timeRange, setTimeRange] = useState<number>(24);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [maxTimestamp, setMaxTimestamp] = useState<number | null>(null);
+
   
   const handleLeverageChange = (value: number) => {
     setLeverage(value);
@@ -102,6 +105,7 @@ export default function MarketPage() {
         );
         
         setLatestData({ totalRVI, categoryRVIs });
+        setMaxTimestamp(latestTimestamp[0].timestamp);
         
         // Fetch historical data
         const now = Math.floor(Date.now() / 1000);
@@ -129,6 +133,48 @@ export default function MarketPage() {
     
     loadData();
   }, [timeRange]);
+
+  useEffect(() => {
+    if (!maxTimestamp) return;
+  
+    const interval = setInterval(async () => {
+      try {
+        const { data: newRows, error } = await supabase
+          .from('rvi_aggregate')
+          .select('*')
+          .gt('timestamp', maxTimestamp)
+          .order('timestamp', { ascending: true });
+  
+        if (error) {
+          console.error("Polling error:", error.message);
+          return;
+        }
+  
+        if (newRows.length > 0) {
+          const processed = processRVIData(newRows);
+          setHistory(prev => [...prev, ...processed]);
+  
+          const maxNewTimestamp = Math.max(...newRows.map(r => r.timestamp));
+          setMaxTimestamp(maxNewTimestamp);
+  
+          // Also update latestData if the newest snapshot is newer
+          const latestSnapshot = newRows.filter(row => row.timestamp === maxNewTimestamp);
+          const totalRVI = latestSnapshot.find(row => row.category === 'Total')?.rvi || 0;
+          const categoryRVIs = Object.fromEntries(
+            latestSnapshot
+              .filter(row => row.category !== 'Total')
+              .map(row => [row.category, row.rvi])
+          );
+          setLatestData({ totalRVI, categoryRVIs });
+        }
+      } catch (err) {
+        console.error("Polling exception:", err);
+      }
+    }, 60000); // Poll every 60 seconds
+  
+    return () => clearInterval(interval);
+  }, [maxTimestamp]);
+  
 
   if (loading) {
     return (

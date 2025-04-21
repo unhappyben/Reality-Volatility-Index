@@ -39,7 +39,8 @@ export default function OptionsPage() {
   const [optionExpiry, setOptionExpiry] = useState<string>("7d");
   const [optionStrike, setOptionStrike] = useState<string | number | null>(null);
   const [optionAmount, setOptionAmount] = useState<number | null>(null);
-  
+  const [maxTimestamp, setMaxTimestamp] = useState<number | null>(null);
+
   const formatCurrency = (value: any) => {
     return value ? parseFloat(value).toFixed(2) : "0.00";
   };
@@ -99,7 +100,8 @@ export default function OptionsPage() {
         );
         
         setLatestData({ totalRVI, categoryRVIs });
-        
+        setMaxTimestamp(latestTimestamp[0].timestamp); // Track latest snapshot
+
         // Fetch historical data
         const now = Math.floor(Date.now() / 1000);
         const historyTimeRangeInSeconds = timeRange === 24 ? 86400 : // 1 day
@@ -131,6 +133,47 @@ export default function OptionsPage() {
     
     loadData();
   }, [timeRange]);
+
+  useEffect(() => {
+    if (!maxTimestamp) return;
+  
+    const interval = setInterval(async () => {
+      try {
+        const { data: newRows, error } = await supabase
+          .from('rvi_aggregate')
+          .select('*')
+          .gt('timestamp', maxTimestamp)
+          .order('timestamp', { ascending: true });
+  
+        if (error) {
+          console.error("Polling error:", error.message);
+          return;
+        }
+  
+        if (newRows.length > 0) {
+          const processed = processRVIData(newRows);
+          setHistory(prev => [...prev, ...processed]);
+  
+          const maxNewTimestamp = Math.max(...newRows.map(r => r.timestamp));
+          setMaxTimestamp(maxNewTimestamp);
+  
+          const latestSnapshot = newRows.filter(row => row.timestamp === maxNewTimestamp);
+          const totalRVI = latestSnapshot.find(row => row.category === 'Total')?.rvi || 0;
+          const categoryRVIs = Object.fromEntries(
+            latestSnapshot
+              .filter(row => row.category !== 'Total')
+              .map(row => [row.category, row.rvi])
+          );
+          setLatestData({ totalRVI, categoryRVIs });
+        }
+      } catch (err) {
+        console.error("Polling exception:", err);
+      }
+    }, 60000); // 60s poll
+  
+    return () => clearInterval(interval);
+  }, [maxTimestamp]);
+  
 
   useEffect(() => {
     // Set default strike price based on current asset price
