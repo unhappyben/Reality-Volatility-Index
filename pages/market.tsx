@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Navbar from "@/components/Navbar";
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -13,6 +13,7 @@ import {
   CartesianGrid,
   ReferenceLine
 } from "recharts";
+import { useVolatility } from "@/hooks/useVolatility";
 
 interface GroupedRVIData {
   timestamp: number;
@@ -40,40 +41,103 @@ export default function MarketPage() {
   const [error, setError] = useState<string | null>(null);
   const [maxTimestamp, setMaxTimestamp] = useState<number | null>(null);
 
-  
-  const handleLeverageChange = (value: number) => {
-    setLeverage(value);
-    setCustomLeverage(value.toFixed(1));
-  };
-  
-  const formatCurrency = (value) => {
-    return value ? parseFloat(value).toFixed(2) : "0.00";
-  };
-  
-  const processRVIData = (data: any[]): GroupedRVIData[] | null => {
-    if (!data || data.length === 0) return null;
-    
-    // Group by timestamp
-    const groupedByTimestamp: Record<number, GroupedRVIData> = {};
-    data.forEach(row => {
-      if (!groupedByTimestamp[row.timestamp]) {
-        groupedByTimestamp[row.timestamp] = {
-          timestamp: row.timestamp,
-          categoryRVIs: {}
-        };
-      }
-      
-      if (row.category === 'Total') {
-        groupedByTimestamp[row.timestamp].totalRVI = row.rvi;
-      } else {
-        groupedByTimestamp[row.timestamp].categoryRVIs[row.category] = row.rvi;
-      }
-    });
-    
-    // Convert to array and sort by timestamp
-    return Object.values(groupedByTimestamp).sort((a, b) => a.timestamp - b.timestamp);
-  };
+  // Memoize primary score calculation
+  const primaryScore = useMemo(() => {
+    if (!latestData) return null;
+    return activeCategory 
+      ? latestData.categoryRVIs[activeCategory] 
+      : latestData.totalRVI;
+  }, [latestData, activeCategory]);
 
+  // Memoize the title based on activeCategory
+  const primaryTitle = useMemo(() => {
+    return activeCategory ?? "Reality Volatility Index";
+  }, [activeCategory]);
+
+  // Use the volatility hook for accurate volatility calculation
+  const annualizedVolatility = useVolatility({
+    history,
+    activeCategory,
+    primaryScore
+  });
+  
+  // Memoize derived values based on inputs
+  const contractAmount = useMemo(() => {
+    if (!collateral || !primaryScore) return 0;
+    return (collateral * leverage) / primaryScore;
+  }, [collateral, leverage, primaryScore]);
+
+  const estimatedPositionSize = useMemo(() => {
+    return (contractAmount * (primaryScore || 0)).toFixed(2);
+  }, [contractAmount, primaryScore]);
+
+  const tpPrice = useMemo(() => {
+    if (!takeProfit || !primaryScore) return null;
+    return (primaryScore * (1 + takeProfit / 100)).toFixed(2);
+  }, [takeProfit, primaryScore]);
+
+  const slPrice = useMemo(() => {
+    if (!stopLoss || !primaryScore) return null;
+    return (primaryScore * (1 - stopLoss / 100)).toFixed(2);
+  }, [stopLoss, primaryScore]);
+
+  const calculatedLiquidationPrice = useMemo(() => {
+    if (!primaryScore) return "0.00";
+    return (primaryScore - (primaryScore * 0.8) / leverage).toFixed(2);
+  }, [primaryScore, leverage]);
+
+  const liquidationPrice = useMemo(() => {
+    return !stopLoss ? calculatedLiquidationPrice : null;
+  }, [stopLoss, calculatedLiquidationPrice]);
+
+  const isStopLossTooLow = useMemo(() => {
+    if (!stopLoss || !slPrice || !calculatedLiquidationPrice) return false;
+    return parseFloat(slPrice) <= parseFloat(calculatedLiquidationPrice);
+  }, [stopLoss, slPrice, calculatedLiquidationPrice]);
+
+  // Memoize handler functions to prevent recreation on each render
+  const handleLeverageChange = useMemo(() => {
+    return (value: number) => {
+      setLeverage(value);
+      setCustomLeverage(value.toFixed(1));
+    };
+  }, []);
+  
+  // Memoize formatCurrency function
+  const formatCurrency = useMemo(() => {
+    return (value: any) => {
+      return value ? parseFloat(String(value)).toFixed(2) : "0.00";
+    };
+  }, []);
+  
+  // Memoize the process RVI data function
+  const processRVIData = useMemo(() => {
+    return (data: any[]): GroupedRVIData[] | null => {
+      if (!data || data.length === 0) return null;
+      
+      // Group by timestamp
+      const groupedByTimestamp: Record<number, GroupedRVIData> = {};
+      data.forEach(row => {
+        if (!groupedByTimestamp[row.timestamp]) {
+          groupedByTimestamp[row.timestamp] = {
+            timestamp: row.timestamp,
+            categoryRVIs: {}
+          };
+        }
+        
+        if (row.category === 'Total') {
+          groupedByTimestamp[row.timestamp].totalRVI = row.rvi;
+        } else {
+          groupedByTimestamp[row.timestamp].categoryRVIs[row.category] = row.rvi;
+        }
+      });
+      
+      // Convert to array and sort by timestamp
+      return Object.values(groupedByTimestamp).sort((a, b) => a.timestamp - b.timestamp);
+    };
+  }, []);
+
+  // Initial data loading
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -109,7 +173,7 @@ export default function MarketPage() {
         
         // Fetch historical data
         const now = Math.floor(Date.now() / 1000);
-        const historyTimeLimit = now - (timeRange * 60 * 60 * 24); // Convert days to seconds
+        const historyTimeLimit = now - (timeRange * 60 * 60); // Convert hours to seconds (not days)
         
         const { data: historyRows, error: historyError } = await supabase
           .from('rvi_aggregate')
@@ -132,8 +196,9 @@ export default function MarketPage() {
     };
     
     loadData();
-  }, [timeRange]);
+  }, [timeRange, processRVIData]);
 
+  // Polling for new data
   useEffect(() => {
     if (!maxTimestamp) return;
   
@@ -152,7 +217,9 @@ export default function MarketPage() {
   
         if (newRows.length > 0) {
           const processed = processRVIData(newRows);
-          setHistory(prev => [...prev, ...processed]);
+          if (processed) {
+            setHistory(prev => [...prev, ...processed]);
+          }
   
           const maxNewTimestamp = Math.max(...newRows.map(r => r.timestamp));
           setMaxTimestamp(maxNewTimestamp);
@@ -173,9 +240,121 @@ export default function MarketPage() {
     }, 60000); // Poll every 60 seconds
   
     return () => clearInterval(interval);
-  }, [maxTimestamp]);
-  
+  }, [maxTimestamp, processRVIData]);
 
+  // Memoize chart data
+  const chartData = useMemo(() => {
+    if (!history.length) return [];
+    
+    const now = Date.now() / 1000;
+    const rangeSeconds = timeRange * 60 * 60; // Hours to seconds
+    return history
+      .filter((entry) => now - entry.timestamp <= rangeSeconds)
+      .map((entry) => {
+        const date = new Date(entry.timestamp * 1000);
+        
+        // Format timestamp based on timeRange
+        let formattedTime;
+        if (timeRange <= 24) {
+          // For timeRange <= 24 hours, include time with date in smaller format
+          formattedTime = date.toLocaleString("en-US", {
+            month: "numeric",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        } else {
+          // For timeRange > 24 hours, show date more prominently
+          formattedTime = date.toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+          });
+        }
+        
+        return {
+          timestamp: formattedTime,
+          value: activeCategory ? entry.categoryRVIs[activeCategory] : entry.totalRVI,
+          raw: entry.timestamp // Add raw timestamp for sorting
+        };
+      })
+      // Sort by timestamp to ensure chronological order
+      .sort((a, b) => a.raw - b.raw);
+  }, [history, timeRange, activeCategory]);
+
+  // Memoize category buttons rendering
+  const renderCategoryButtons = useMemo(() => {
+    if (!latestData) return null;
+    
+    const entries = Object.entries(latestData.categoryRVIs);
+    const sorted = entries.sort(([a], [b]) => a.localeCompare(b));
+    const final = activeCategory ? [...sorted, ["Total RVI", latestData.totalRVI]] : sorted;
+    
+    return (
+      <>
+        {final.map(([category, rawScore]) => {
+          const score = typeof rawScore === "number" ? rawScore : parseFloat(String(rawScore));
+          return (
+            <button
+              key={category}
+              className={`flex justify-between items-center border border-highlight rounded-md px-4 py-2 text-sm font-bold w-full hover:bg-highlight/10 transition-colors mb-1 ${
+                activeCategory === category ? "text-neon" : "text-white"
+              }`}
+              onClick={() =>
+                setActiveCategory(category === "Total RVI" ? null : String(category))
+              }
+            >
+              <span>{category}</span>
+              <span>{score.toFixed(2)}</span>
+            </button>
+          );
+        })}
+      </>
+    );
+  }, [latestData, activeCategory]);
+
+  // Memoize time range buttons rendering
+  const renderTimeRangeButtons = useMemo(() => {
+    const ranges = [1, 2, 4, 6, 12, 24];
+    return (
+      <div className="mb-4 flex gap-2 justify-center">
+        {ranges.map((h) => (
+          <button
+            key={h}
+            className={`text-xs px-2 py-1 border rounded ${
+              timeRange === h ? "bg-highlight text-black" : "border-highlight text-white"
+            }`}
+            onClick={() => setTimeRange(h)}
+          >
+            {h}h
+          </button>
+        ))}
+      </div>
+    );
+  }, [timeRange]);
+
+  // Memoize delta display
+  const deltaDisplay = useMemo(() => {
+    if (!history.length || !primaryScore) return null;
+    
+    const previous = activeCategory
+      ? history[history.length - 2]?.categoryRVIs[activeCategory]
+      : history[history.length - 2]?.totalRVI;
+
+    if (!previous) return null;
+
+    const delta = primaryScore - previous;
+    const deltaPercent = ((delta / previous) * 100).toFixed(2);
+    const isPositive = delta >= 0;
+
+    return (
+      <p className={`text-sm mt-2 font-mono transition-all duration-300 ease-in-out ${isPositive ? "text-green-400" : "text-red-400"}`}>
+        {isPositive ? "▲" : "▼"} {delta.toFixed(2)} ({isPositive ? "↑" : "↓"} {deltaPercent}%)
+      </p>
+    );
+  }, [history, primaryScore, activeCategory]);
+
+  // Loading and error states
   if (loading) {
     return (
       <main className="min-h-screen bg-bg text-white p-4">
@@ -203,94 +382,14 @@ export default function MarketPage() {
     );
   }
 
-  const primaryScore = activeCategory ? latestData.categoryRVIs[activeCategory] : latestData.totalRVI;
-  const primaryTitle = activeCategory ?? "Reality Volatility Index";
-  const contractAmount = collateral ? (collateral * leverage) / primaryScore : 0;
-  const estimatedPositionSize = (contractAmount * primaryScore).toFixed(2);
-  const tpPrice = takeProfit ? (primaryScore * (1 + takeProfit / 100)).toFixed(2) : null;
-  const slPrice = stopLoss ? (primaryScore * (1 - stopLoss / 100)).toFixed(2) : null;
-  const calculatedLiquidationPrice = (primaryScore - (primaryScore * 0.8) / leverage).toFixed(2);
-  const liquidationPrice = !stopLoss ? calculatedLiquidationPrice : null;
-  const isStopLossTooLow = stopLoss
-  ? parseFloat(slPrice) <= parseFloat(calculatedLiquidationPrice)
-  : false;
-
-  const now = Date.now() / 1000;
-  const rangeSeconds = timeRange * 60 * 60;
-  const chartData = history
-    .filter((entry) => now - entry.timestamp <= rangeSeconds)
-    .map((entry) => ({
-      timestamp: new Date(entry.timestamp * 1000).toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      value: activeCategory ? entry.categoryRVIs[activeCategory] : entry.totalRVI,
-    }));
-
-  const renderCategoryButtons = () => {
-    const entries = Object.entries(latestData.categoryRVIs);
-    const sorted = entries.sort(([a], [b]) => a.localeCompare(b));
-    const final = activeCategory ? [...sorted, ["Total RVI", latestData.totalRVI]] : sorted;
-    return final.map(([category, rawScore]) => {
-      const score = typeof rawScore === "number" ? rawScore : parseFloat(rawScore);
-      return (
-        <button
-          key={category}
-          className={`flex justify-between items-center border border-highlight rounded-md px-4 py-2 text-sm font-bold w-full hover:bg-highlight/10 transition-colors mb-1 ${
-            activeCategory === category ? "text-neon" : "text-white"
-          }`}
-          onClick={() =>
-            setActiveCategory(category === "Total RVI" ? null : String(category))
-          }
-        >
-          <span>{category}</span>
-          <span>{score.toFixed(2)}</span>
-        </button>
-      );
-    });
-  };
-
-  const renderTimeRangeButtons = () => {
-    const ranges = [1, 2, 4, 6, 12, 24];
-    return (
-      <div className="mb-4 flex gap-2 justify-center">
-        {ranges.map((h) => (
-          <button
-            key={h}
-            className={`text-xs px-2 py-1 border rounded ${
-              timeRange === h ? "bg-highlight text-black" : "border-highlight text-white"
-            }`}
-            onClick={() => setTimeRange(h)}
-          >
-            {h}h
-          </button>
-        ))}
-      </div>
-    );
-  };
-
   return (
     <main className="min-h-screen bg-bg text-white p-4">
       <Navbar />
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 mt-8">
         <div className="border border-highlight rounded-2xl p-6 col-span-12 xl:col-span-3">
           <h2 className="text-lg font-bold text-neon">{primaryTitle}</h2>
-          <p className="text-5xl font-mono text-neon">{primaryScore.toFixed(2)}</p>
-            {history.length > 1 && (() => {
-            const previous = activeCategory
-              ? history[history.length - 2].categoryRVIs[activeCategory]
-              : history[history.length - 2].totalRVI;
-
-            const delta = primaryScore - previous;
-            const deltaPercent = ((delta / previous) * 100).toFixed(2);
-            const isPositive = delta >= 0;
-
-            return (
-                <p className={`text-sm mt-2 font-mono transition-all duration-300 ease-in-out ${isPositive ? "text-green-400" : "text-red-400"}`}>
-                {isPositive ? "▲" : "▼"} {delta.toFixed(2)} ({isPositive ? "↑" : "↓"} {deltaPercent}%)
-              </p>
-            );
-            })()}
+          <p className="text-5xl font-mono text-neon">{primaryScore?.toFixed(2)}</p>
+          {deltaDisplay}
           <button
             className="mt-4 text-sm text-neon underline"
             onClick={() => setShowBreakdown(!showBreakdown)}
@@ -298,18 +397,23 @@ export default function MarketPage() {
             {showBreakdown ? "▾ Hide category breakdown" : "▸ Show category breakdown"}
           </button>
 
-          {showBreakdown && <div className="mt-4 space-y-1">{renderCategoryButtons()}</div>}
+          {showBreakdown && <div className="mt-4 space-y-1">{renderCategoryButtons}</div>}
         </div>
 
         <div className="border border-highlight bg-gray-950 rounded-2xl p-6 col-span-12 xl:col-span-7">
           <h3 className="text-md text-neon font-bold mb-2 text-center">
             {primaryTitle} – Last {timeRange}h
           </h3>
-          {renderTimeRangeButtons()}
+          {renderTimeRangeButtons}
           <ResponsiveContainer width="100%" height={350}>
             <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-              <XAxis dataKey="timestamp" tick={{ fontSize: 12, fill: "#fff" }} />
+              <XAxis 
+                dataKey="timestamp" 
+                tick={{ fontSize: 10, fill: "#fff" }}
+                interval="preserveStartEnd"
+                minTickGap={15}
+                height={50} />
               <YAxis 
                 tick={{ fontSize: 12, fill: "#fff" }}
                 domain={[
@@ -372,7 +476,7 @@ export default function MarketPage() {
                 />
               )}
 
-              {liquidationPrice && !stopLoss && (
+              {liquidationPrice && (
                 <ReferenceLine 
                   y={parseFloat(liquidationPrice)} 
                   stroke="#FF9800" 
@@ -435,7 +539,7 @@ export default function MarketPage() {
             <input
               type="number"
               value={takeProfit ?? ""}
-              onChange={(e) => setTakeProfit(parseFloat(e.target.value))}
+              onChange={(e) => setTakeProfit(parseFloat(e.target.value) || null)}
               className="mt-1 w-full px-2 py-1 bg-gray-800 border border-highlight rounded-md"
               placeholder="e.g. 20"
             />
@@ -446,7 +550,7 @@ export default function MarketPage() {
             <input
               type="number"
               value={stopLoss ?? ""}
-              onChange={(e) => setStopLoss(parseFloat(e.target.value))}
+              onChange={(e) => setStopLoss(parseFloat(e.target.value) || null)}
               className="mt-1 w-full px-2 py-1 bg-gray-800 border border-highlight rounded-md"
               placeholder="e.g. 10"
             />
@@ -479,10 +583,10 @@ export default function MarketPage() {
             </p>
           )}
 
-          <button className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-xl mt-4">
+          <button className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-xl mt-4 w-full">
             Buy {primaryTitle}
           </button>
-          <button className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl mt-2">
+          <button className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl mt-2 w-full">
             Sell {primaryTitle}
           </button>
         </div>
