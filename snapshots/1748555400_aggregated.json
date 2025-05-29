@@ -1,0 +1,12 @@
+{
+  "totalRVI": 3.23,
+  "categoryRVIs": {
+    "Info/Culture Chaos": 1.05,
+    "Governance Risk": 2.68,
+    "Other": 2.9,
+    "Geopolitics": 7.53,
+    "Financial Instability": 5.53,
+    "Tech Disruption": 69.96,
+    "Climate Risk": 0
+  }
+}
